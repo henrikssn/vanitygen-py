@@ -18,11 +18,11 @@
 
 from pywallet import *
 from operator import mod
-import threading
+from multiprocessing import Process, Value
 import time
 
 # Config vars
-THREADS = 2
+THREADS = 8
 SEARCH_STRING = "1abcd"
 
 # secp256k1
@@ -42,7 +42,7 @@ def point_to_public_key(point):
 		'%064x' % point.x() + \
 		'%064x' % point.y()
 	return hex_i2o_key.decode('hex')
-    
+
 def point_to_private_key(point, secret):
 	# private keys are 279 bytes long (see crypto/ec/cec_asn1.c)
 	# ASN1_SIMPLE(EC_PRIVATEKEY, version, LONG),
@@ -67,35 +67,39 @@ def private_key_to_bc_format(private_key):
 	h = Hash(private_key)
 	return b58encode(private_key + h[0:4])
 
-class vanitygen(threading.Thread):
+class vanitygen(Process):
     def __init__ (self, generator, secret, search_string):
-        threading.Thread.__init__(self)
+        Process.__init__(self)
         self.generator = generator
         self.secret = secret
         self.search_string = search_string
         self.point = generator * secret
-        self.count = 0
+        self.count = Value('i', 0)
+        self.done = Value('i', 0)
     def run(self):
         while (1):
             self.point = self.point + self.generator
             self.secret += 1
-            self.count += 1
+            self.count.value += 1
             pubkey = public_key_to_bc_address(point_to_public_key(self.point))
             if pubkey.find(self.search_string) == 0:
                 self.print_keys()
+                self.done.value = 1
                 return
     def print_keys(self):
         print public_key_to_bc_address(point_to_public_key(self.point))
-        #print private_key_to_bc_format(point_to_private_key(self.point, self.secret))
-    
+        print private_key_to_bc_format(point_to_private_key(self.point, self.secret))
+
     def getCount(self):
         return self.count
 
 def main():
     curve = CurveFp( _p, _a, _b )
-    
+
     print "Search string: ", SEARCH_STRING
-    
+
+    print "Running vanitygen with %i threads" % THREADS
+
     #Init worker threads
     workers = []
     global count
@@ -107,24 +111,28 @@ def main():
         worker.daemon = True
         workers.append(worker)
         worker.start()
-    
-    print "Running vanitygen with %i threads" % THREADS
-    
+
+
     def getCount():
         count = 0
         for worker in workers:
-            count += worker.getCount()
+            count += worker.count.value
         return count
-    
+
     try:
         this_count = 0
-        while threading.active_count():
+        while True:
+            for w in workers:
+                if w.done.value == 1:
+                    raise Exception
             this_count = getCount()
             time.sleep(1)
             print "%i Keys/s" % (getCount() - this_count)
     except (KeyboardInterrupt, SystemExit):
         print '\n! Received keyboard interrupt, quitting threads.\n'
+    except (Exception):
+        print '\n! Done, Exiting...\n'
 
-    
+
 if __name__ == '__main__':
 	main()
