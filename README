@@ -1,6 +1,14 @@
 vanitygen-py
 
-Copyright 2011 Erik Henriksson
+This is a simple implementation on a vanity address generator for bitcoin
+addresses. Performance is of course not in par with the original vanitygen but
+it is easy to understand and modify to your needs. If this has been useful,
+please contribute to the development by sending me a pull request. I will
+happily review it and merge.
+
+Released under the The MIT License (MIT)
+
+Copyright (c) 2011-2014 Erik Henriksson
 
 Dependencies:
 pywallet
